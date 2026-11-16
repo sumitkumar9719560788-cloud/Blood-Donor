@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  DONOR
+  REQUESTER
+  ADMIN
+}
+
+enum BloodGroup {
+  A_POSITIVE
+  A_NEGATIVE
+  B_POSITIVE
+  B_NEGATIVE
+  AB_POSITIVE
+  AB_NEGATIVE
+  O_POSITIVE
+  O_NEGATIVE
+}
+
+enum RequestStatus {
+  SUBMITTED
+  CONTACTING
+  FULFILLED
+  CANCELLED
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model User {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  name            String
+  email           String   @unique
+  passwordHash    String
+  phone           String?
+  city            String?
+  role            Role     @default(USER)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  donorProfile    DonorProfile?
+  requestHistory  BloodRequest[]
+  adminReports    Report[] @relation("ReportAuthor")
+}
+
+model DonorProfile {
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId           String    @unique @db.ObjectId
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bloodGroup       BloodGroup
+  city             String
+  latitude         Float?
+  longitude        Float?
+  available        Boolean   @default(true)
+  consentVisible   Boolean   @default(false)
+  isDemo           Boolean   @default(false)
+  lastVerifiedAt   DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  requestsHandled  BloodRequest[]
+}
+
+model BloodBank {
+  id                 String              @id @default(auto()) @map("_id") @db.ObjectId
+  name               String
+  city               String
+  address            String
+  phone              String
+  latitude           Float
+  longitude          Float
+  bloodInventory     Json
+  operatingHours     String
+  verified           Boolean             @default(false)
+  verificationStatus  VerificationStatus  @default(PENDING)
+  isDemo              Boolean             @default(false)
+  lastVerifiedAt     DateTime            @default(now())
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  reports            Report[]
+}
+
+model BloodRequest {
+  id              String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String        @db.ObjectId
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  donorId         String?       @db.ObjectId
+  donor           DonorProfile? @relation(fields: [donorId], references: [id], onDelete: SetNull)
+  bloodGroup      BloodGroup
+  unitsNeeded     Int
+  urgency        String
+  city            String
+  hospitalName   String
+  contactMethod   String
+  details         String?
+  consentToShare  Boolean       @default(false)
+  isDemo          Boolean       @default(false)
+  status          RequestStatus @default(SUBMITTED)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model Report {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  authorId    String   @db.ObjectId
+  author      User     @relation("ReportAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  bankId      String?  @db.ObjectId
+  bank        BloodBank? @relation(fields: [bankId], references: [id], onDelete: SetNull)
+  title       String
+  description String
+  createdAt   DateTime @default(now())
+}
