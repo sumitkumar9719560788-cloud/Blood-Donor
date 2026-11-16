@@ -1,2 +1,54 @@
+import { useState } from 'react';
 import { Heart } from 'lucide-react';
-export default function Register({go}){return <div className="mx-auto max-w-3xl px-5 py-14"><div className="text-center"><span className="inline-grid h-12 w-12 place-items-center rounded-2xl bg-red-50 text-red-600"><Heart fill="currentColor"/></span><h1 className="font-display mt-4 text-4xl text-slate-900">Become someone’s hero</h1><p className="mt-2 text-slate-500">Join a community that shows up when it matters.</p></div><form className="mt-8 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-100 md:p-8"><div className="grid gap-5 md:grid-cols-2">{[['Full name','Your full name'],['Email address','you@example.com'],['Phone number','+91'],['City','Your city']].map(([a,b])=><label className="text-sm font-bold" key={a}>{a}<input className="mt-2 w-full rounded-xl border p-3 font-normal outline-red-400" placeholder={b}/></label>)}<label className="text-sm font-bold">Blood group<select className="mt-2 w-full rounded-xl border p-3 font-normal outline-red-400"><option>Select group</option><option>O+</option><option>A+</option><option>B+</option><option>AB+</option></select></label><label className="text-sm font-bold">Date of birth<input type="date" className="mt-2 w-full rounded-xl border p-3 font-normal outline-red-400"/></label></div><label className="mt-6 flex gap-3 rounded-xl bg-rose-50 p-4 text-sm text-slate-600"><input type="checkbox" className="mt-1 accent-red-600"/>I confirm that I’m willing to be contacted for eligible blood donation requests.</label><button type="button" onClick={()=>go('dashboard')} className="mt-6 w-full rounded-xl bg-red-600 p-3 font-bold text-white">Create donor profile</button></form></div>}
+import { bloodGroups, login, register, saveDonor } from '../services/api';
+
+const initialForm = { name: '', email: '', phone: '', city: '', group: '', password: '', consent: false };
+
+export default function Register({ go }) {
+	const [form, setForm] = useState(initialForm);
+	const [message, setMessage] = useState({ type: '', text: '' });
+	const update = (event) => setForm({ ...form, [event.target.name]: event.target.type === 'checkbox' ? event.target.checked : event.target.value });
+
+	const submit = async (event) => {
+		event.preventDefault();
+		if (!form.name || !form.email || !form.phone || !form.city || !form.group || !form.password) {
+			setMessage({ type: 'error', text: 'Please complete every field before creating your profile.' });
+			return;
+		}
+		if (form.password.length < 8) {
+			setMessage({ type: 'error', text: 'Password must be at least 8 characters.' });
+			return;
+		}
+		if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+			setMessage({ type: 'error', text: 'Please enter a valid email address.' });
+			return;
+		}
+		if (!form.consent) {
+			setMessage({ type: 'error', text: 'Please confirm that you are willing to be contacted.' });
+			return;
+		}
+		try {
+			await register({
+				name: form.name,
+				email: form.email,
+				password: form.password,
+				phone: form.phone,
+				city: form.city,
+				role: 'DONOR',
+			});
+			await login({ email: form.email, password: form.password });
+			await saveDonor({
+				bloodGroup: form.group,
+				city: form.city,
+				consentVisible: form.consent,
+				available: true,
+			});
+			setForm(initialForm);
+			setMessage({ type: 'success', text: 'Your donor profile was created. Thank you for showing up.' });
+		} catch (error) {
+			setMessage({ type: 'error', text: error.message });
+		}
+	};
+
+	return <div className="page-shell narrow-page"><div className="page-heading centered"><span className="icon-tile"><Heart fill="currentColor" /></span><h1>Become someone’s hero</h1><p>Join a community that shows up when it matters.</p></div><form className="form-card" onSubmit={submit} noValidate><div className="form-grid">{[['name','Full name','Your full name','text'],['email','Email address','you@example.com','email'],['phone','Phone number','+91','tel'],['city','City','Your city','text']].map(([name,label,placeholder,type])=><label className="field" key={name}>{label}<input name={name} type={type} value={form[name]} onChange={update} placeholder={placeholder} /></label>)}<label className="field">Blood group<select name="group" value={form.group} onChange={update}><option value="">Select group</option>{bloodGroups.map((group) => <option key={group}>{group}</option>)}</select></label>	<label className="field">Password<input name="password" type="password" minLength="8" value={form.password} onChange={update} placeholder="At least 8 characters" /></label></div><label className="consent"><input name="consent" type="checkbox" checked={form.consent} onChange={update} />I consent to my donor name and city being shown to people searching for donors. My contact details will not be public.</label>{message.text && <p role="status" className={`form-message ${message.type}`}>{message.text}</p>}<button type="submit" className="button primary full-width">Create donor profile</button></form></div>;
+}
