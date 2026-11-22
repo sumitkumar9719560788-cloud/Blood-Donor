@@ -11,9 +11,10 @@ import reportRoutes from './routes/reports.js';
 import mongooseConnection, { connectDatabase } from './database/mongoose.js';
 
 const app = express();
+const allowedOrigins = env.CLIENT_URL.split(',').map((origin) => origin.trim()).filter(Boolean);
 
 app.set('trust proxy', 1);
-app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
+app.use(cors({ origin: (origin, callback) => callback(null, !origin || allowedOrigins.includes(origin)), credentials: true }));
 app.use(express.json({ limit: '16kb' }));
 app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false }));
 

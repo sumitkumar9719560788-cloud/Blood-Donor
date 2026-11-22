@@ -15,7 +15,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: CLIENT_URL
-        value: https://lifelink-web.onrender.com
+        value: https://lifelink-web.onrender.com,https://graceful-selkie-dc273f.netlify.app
 
   - type: web
     name: lifelink-web
