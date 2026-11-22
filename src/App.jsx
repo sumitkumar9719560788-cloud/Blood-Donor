@@ -12,7 +12,7 @@ import Dashboard from './pages/Dashboard';
 
 const pages = { home: Home, login: Login, register: Register, blood: FindBlood, donor: FindDonor, banks: BloodBanks, emergency: Emergency, dashboard: Dashboard };
 export default function App() {
-  const [page, setPage] = useState('home');
+  const [page, setPage] = useState(() => new URLSearchParams(window.location.search).has('resetToken') ? 'login' : 'home');
   const Page = pages[page] || Home;
   const go = (next) => { setPage(next); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   return <div className="min-h-screen bg-slate-50 text-slate-800"><Navbar page={page} go={go}/><main><Page go={go}/></main>{page !== 'dashboard' && <Footer go={go}/>}</div>;

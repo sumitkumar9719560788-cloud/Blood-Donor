@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import prisma from '../database/prisma.js';
+import { BloodBank } from '../models.js';
 import { handleError } from '../utils/errors.js';
-import { BloodGroup } from '@prisma/client';
+import { BloodGroup, type BloodGroupValue } from '../models.js';
 
-const bloodGroupValues: Record<string, BloodGroup> = {
+const bloodGroupValues: Record<string, BloodGroupValue> = {
   'A+': BloodGroup.A_POSITIVE,
   'A-': BloodGroup.A_NEGATIVE,
   'B+': BloodGroup.B_POSITIVE,
@@ -22,13 +22,9 @@ router.get('/', async (req, res) => {
     if (bloodGroup && !bloodGroupValues[bloodGroup]) {
       return res.status(400).json({ message: 'Invalid blood group' });
     }
-    const banks = await prisma.bloodBank.findMany({
-      where: {
-        ...(city ? { city: { contains: city, mode: 'insensitive' } } : {}),
-        verified: true,
-      },
-      take: 25,
-    });
+    const banks = await BloodBank.find({
+      ...(city ? { city: { $regex: city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } } : {}), verified: true,
+    }).limit(25);
 
     const filtered = bloodGroup
       ? banks.filter((bank) => {

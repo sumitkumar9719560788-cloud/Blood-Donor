@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import env from './config/env.js';
 import authRoutes from './routes/auth.js';
 import donorRoutes from './routes/donors.js';
@@ -7,14 +8,22 @@ import bankRoutes from './routes/banks.js';
 import requestRoutes from './routes/requests.js';
 import adminRoutes from './routes/admin.js';
 import reportRoutes from './routes/reports.js';
+import mongooseConnection, { connectDatabase } from './database/mongoose.js';
 
 const app = express();
 
+app.set('trust proxy', 1);
 app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
 app.use(express.json({ limit: '16kb' }));
+app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false }));
 
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', message: 'LifeLink API is running' });
+app.get('/api/health', async (_req, res) => {
+  try {
+    await mongooseConnection.db?.admin().ping();
+    res.json({ status: 'ok', database: 'connected', message: 'LifeLink API is ready' });
+  } catch {
+    res.status(503).json({ status: 'unavailable', database: 'disconnected', message: 'LifeLink API cannot reach its database' });
+  }
 });
 
 app.use('/api/auth', authRoutes);
@@ -33,6 +42,9 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
   res.status(status).json({ message });
 });
 
-app.listen(env.PORT, () => {
-  console.log(`LifeLink API listening on http://localhost:${env.PORT}`);
+connectDatabase(env.DATABASE_URL).then(() => {
+  app.listen(env.PORT, () => console.log(`LifeLink API listening on http://localhost:${env.PORT}`));
+}).catch((error: unknown) => {
+  console.error('Unable to connect to MongoDB', error instanceof Error ? error.message : 'Unknown database error');
+  process.exit(1);
 });

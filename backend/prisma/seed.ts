@@ -1,7 +1,7 @@
-import { PrismaClient } from '@prisma/client';
+import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
-
-const prisma = new PrismaClient();
+import env from '../src/config/env.js';
+import { BloodBank, BloodRequest, DonorProfile, User } from '../src/models.js';
 
 async function main() {
   if (process.env.NODE_ENV === 'production') {
@@ -10,52 +10,38 @@ async function main() {
 
   const adminPassword = await bcrypt.hash('admin123', 10);
 
-  const admin = await prisma.user.upsert({
-    where: { email: 'admin@lifelink.app' },
-    update: {},
-    create: {
+  await mongoose.connect(env.DATABASE_URL);
+  const admin = await User.findOneAndUpdate({ email: 'admin@lifelink.app' }, { $setOnInsert: {
       name: 'Admin User',
       email: 'admin@lifelink.app',
       passwordHash: adminPassword,
       role: 'ADMIN',
       city: 'Bengaluru',
       phone: '+91 90000 00001',
-    },
-  });
+    } }, { upsert: true, new: true, setDefaultsOnInsert: true });
 
-  const donorUser = await prisma.user.upsert({
-    where: { email: 'donor@lifelink.app' },
-    update: {},
-    create: {
+  const donorUser = await User.findOneAndUpdate({ email: 'donor@lifelink.app' }, { $setOnInsert: {
       name: 'Sample Donor',
       email: 'donor@lifelink.app',
       passwordHash: await bcrypt.hash('donor123', 10),
       role: 'DONOR',
       city: 'Bengaluru',
       phone: '+91 90000 00002',
-    },
-  });
+    } }, { upsert: true, new: true, setDefaultsOnInsert: true });
 
-  await prisma.donorProfile.upsert({
-    where: { userId: donorUser.id },
-    update: {},
-    create: {
-      userId: donorUser.id,
+  await DonorProfile.findOneAndUpdate({ userId: donorUser!._id }, { $setOnInsert: {
+      userId: donorUser!._id,
       bloodGroup: 'O_POSITIVE',
       city: 'Koramangala',
       latitude: 12.9352,
       longitude: 77.6245,
       available: true,
       consentVisible: true,
+      verificationStatus: 'VERIFIED',
       isDemo: true,
-    },
-  });
+    } }, { upsert: true, new: true, setDefaultsOnInsert: true });
 
-  await prisma.bloodBank.upsert({
-    where: { id: '64b000000000000000000001' },
-    update: {},
-    create: {
-      id: '64b000000000000000000001',
+  await BloodBank.findOneAndUpdate({ _id: '64b000000000000000000001' }, { $setOnInsert: {
       name: 'Bengaluru Red Cross Blood Bank',
       city: 'Bengaluru',
       address: 'MG Road, Bengaluru',
@@ -68,14 +54,9 @@ async function main() {
       verificationStatus: 'VERIFIED',
       lastVerifiedAt: new Date(),
       isDemo: true,
-    },
-  });
+    } }, { upsert: true, new: true, setDefaultsOnInsert: true });
 
-  await prisma.bloodBank.upsert({
-    where: { id: '64b000000000000000000002' },
-    update: {},
-    create: {
-      id: '64b000000000000000000002',
+  await BloodBank.findOneAndUpdate({ _id: '64b000000000000000000002' }, { $setOnInsert: {
       name: 'City General Hospital Blood Centre',
       city: 'Bengaluru',
       address: 'Indiranagar, Bengaluru',
@@ -88,15 +69,10 @@ async function main() {
       verificationStatus: 'VERIFIED',
       lastVerifiedAt: new Date(),
       isDemo: true,
-    },
-  });
+    } }, { upsert: true, new: true, setDefaultsOnInsert: true });
 
-  await prisma.bloodRequest.upsert({
-    where: { id: '64b000000000000000000003' },
-    update: {},
-    create: {
-      id: '64b000000000000000000003',
-      userId: admin.id,
+  await BloodRequest.findOneAndUpdate({ _id: '64b000000000000000000003' }, { $setOnInsert: {
+      userId: admin!._id,
       bloodGroup: 'A_POSITIVE',
       unitsNeeded: 2,
       urgency: 'Urgent',
@@ -106,8 +82,7 @@ async function main() {
       details: 'Sample request for demonstration',
       status: 'SUBMITTED',
       isDemo: true,
-    },
-  });
+    } }, { upsert: true, new: true, setDefaultsOnInsert: true });
 
   console.log('Seed data inserted');
 }
@@ -115,6 +90,4 @@ async function main() {
 main().catch((error) => {
   console.error(error);
   process.exit(1);
-}).finally(async () => {
-  await prisma.$disconnect();
-});
+}).finally(async () => { await mongoose.disconnect(); });
