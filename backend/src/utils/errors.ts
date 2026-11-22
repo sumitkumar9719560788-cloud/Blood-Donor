@@ -13,6 +13,16 @@ export const handleError = (error: unknown) => {
     return { message: error.message, statusCode: error.statusCode };
   }
 
+  if (typeof error === 'object' && error !== null && 'code' in error && error.code === 11000) {
+    return { message: 'A record with that value already exists', statusCode: 409 };
+  }
+
+  if (typeof error === 'object' && error !== null && 'name' in error) {
+    if (error.name === 'ValidationError' || error.name === 'CastError') {
+      return { message: 'The submitted data is invalid', statusCode: 400 };
+    }
+  }
+
   if (error instanceof Error) {
     return { message: 'Internal server error', statusCode: 500 };
   }

@@ -1,10 +1,10 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import { z } from 'zod';
-import prisma from '../database/prisma.js';
+import { BloodRequest, DonorProfile, RequestStatus } from '../models.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { requestSchema } from '../validators/auth.js';
 import { handleError } from '../utils/errors.js';
-import { RequestStatus } from '@prisma/client';
 import rateLimit from 'express-rate-limit';
 
 const bloodGroupValues = {
@@ -29,32 +29,16 @@ const requestLimiter = rateLimit({
 
 router.get('/opportunities', requireAuth, requireRole(['DONOR']), async (req, res) => {
   try {
-    const profile = await prisma.donorProfile.findUnique({ where: { userId: req.user!.id } });
-    if (!profile || !profile.available || !profile.consentVisible) {
+    const profile = await DonorProfile.findOne({ userId: req.user!.id });
+    if (!profile || !profile.available || !profile.consentVisible || profile.verificationStatus !== 'VERIFIED') {
       return res.status(403).json({ message: 'Set your donor profile as available and opt in to receive requests' });
     }
-    const requests = await prisma.bloodRequest.findMany({
-      where: {
-        status: RequestStatus.SUBMITTED,
-        consentToShare: true,
-        bloodGroup: profile.bloodGroup,
-        city: { contains: profile.city, mode: 'insensitive' },
-      },
-      select: {
-        id: true,
-        bloodGroup: true,
-        unitsNeeded: true,
-        urgency: true,
-        city: true,
-        hospitalName: true,
-        contactMethod: true,
-        details: true,
-        isDemo: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-    });
+    const requests = await BloodRequest.find({
+      status: RequestStatus.SUBMITTED,
+      consentToShare: true,
+      bloodGroup: profile.bloodGroup,
+      city: { $regex: profile.city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' },
+    }).select('bloodGroup unitsNeeded urgency city hospitalName details isDemo createdAt').sort({ createdAt: -1 }).limit(20);
     res.json({ requests });
   } catch (error) {
     const handled = handleError(error);
@@ -64,28 +48,12 @@ router.get('/opportunities', requireAuth, requireRole(['DONOR']), async (req, re
 
 router.get('/assigned', requireAuth, requireRole(['DONOR']), async (req, res) => {
   try {
-    const profile = await prisma.donorProfile.findUnique({ where: { userId: req.user!.id } });
+    const profile = await DonorProfile.findOne({ userId: req.user!.id });
     if (!profile) return res.status(403).json({ message: 'Create a donor profile to view your accepted requests' });
-    const requests = await prisma.bloodRequest.findMany({
-      where: {
+    const requests = await BloodRequest.find({
         donorId: profile.id,
-        status: { in: [RequestStatus.CONTACTING, RequestStatus.FULFILLED] },
-      },
-      select: {
-        id: true,
-        bloodGroup: true,
-        unitsNeeded: true,
-        urgency: true,
-        city: true,
-        hospitalName: true,
-        contactMethod: true,
-        details: true,
-        isDemo: true,
-        status: true,
-        createdAt: true,
-      },
-      orderBy: { updatedAt: 'desc' },
-    });
+        status: { $in: [RequestStatus.CONTACTING, RequestStatus.FULFILLED] },
+      }).select('bloodGroup unitsNeeded urgency city hospitalName contactMethod details isDemo status createdAt').sort({ updatedAt: -1 });
     res.json({ requests });
   } catch (error) {
     const handled = handleError(error);
@@ -95,10 +63,7 @@ router.get('/assigned', requireAuth, requireRole(['DONOR']), async (req, res) =>
 
 router.get('/', requireAuth, async (req, res) => {
   try {
-    const requests = await prisma.bloodRequest.findMany({
-      where: { userId: req.user!.id },
-      orderBy: { createdAt: 'desc' },
-    });
+    const requests = await BloodRequest.find({ userId: req.user!.id }).sort({ createdAt: -1 });
     res.json({ requests });
   } catch (error) {
     const handled = handleError(error);
@@ -109,8 +74,7 @@ router.get('/', requireAuth, async (req, res) => {
 router.post('/', requestLimiter, requireAuth, async (req, res) => {
   try {
     const parsed = requestSchema.parse(req.body);
-    const request = await prisma.bloodRequest.create({
-      data: {
+    const request = await BloodRequest.create({
         userId: req.user!.id,
         bloodGroup: bloodGroupValues[parsed.bloodGroup],
         unitsNeeded: parsed.unitsNeeded,
@@ -120,7 +84,6 @@ router.post('/', requestLimiter, requireAuth, async (req, res) => {
         contactMethod: parsed.contactMethod,
         details: parsed.details,
         consentToShare: parsed.consentToShare,
-      },
     });
     res.status(201).json({ message: 'Blood request created successfully', request });
   } catch (error) {
@@ -134,25 +97,23 @@ router.post('/', requestLimiter, requireAuth, async (req, res) => {
 
 router.post('/:id/respond', requireAuth, requireRole(['DONOR']), async (req, res) => {
   try {
-    const profile = await prisma.donorProfile.findUnique({ where: { userId: req.user!.id } });
-    if (!profile || !profile.available || !profile.consentVisible) {
+    const profile = await DonorProfile.findOne({ userId: req.user!.id });
+    if (!profile || !profile.available || !profile.consentVisible || profile.verificationStatus !== 'VERIFIED') {
       return res.status(403).json({ message: 'Your donor profile is not opted in for requests' });
     }
-    const changed = await prisma.bloodRequest.updateMany({
-      where: {
-        id: req.params.id,
+    const changed = await BloodRequest.findOneAndUpdate({
+        _id: req.params.id,
         status: RequestStatus.SUBMITTED,
         consentToShare: true,
         bloodGroup: profile.bloodGroup,
-        city: { contains: profile.city, mode: 'insensitive' },
+        city: { $regex: profile.city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' },
       },
-      data: { status: RequestStatus.CONTACTING, donorId: profile.id },
-    });
-    if (changed.count === 0) {
+      { $set: { status: RequestStatus.CONTACTING, donorId: profile._id } },
+    );
+    if (!changed) {
       return res.status(409).json({ message: 'This request is no longer available or does not match your donor profile' });
     }
-    const request = await prisma.bloodRequest.findUnique({ where: { id: req.params.id } });
-    res.json({ message: 'You are now connected to this request. Contact the requester directly.', request });
+    res.json({ message: 'You are now connected to this request. The requester contact is available in your assigned requests.' });
   } catch (error) {
     const handled = handleError(error);
     res.status(handled.statusCode).json({ message: handled.message });
@@ -165,24 +126,28 @@ router.patch('/:id/status', requireAuth, async (req, res) => {
       status: z.nativeEnum(RequestStatus),
     }).parse(req.body);
     const { id } = req.params;
-    const request = await prisma.bloodRequest.findUnique({ where: { id } });
+    if (!mongoose.isValidObjectId(id)) return res.status(400).json({ message: 'Invalid request id' });
+    const request = await BloodRequest.findById(id);
     if (!request) return res.status(404).json({ message: 'Request not found' });
-    const isOwnerCancellation = request.userId === req.user!.id
+    const isTerminal = request.status === RequestStatus.FULFILLED || request.status === RequestStatus.CANCELLED;
+    if (isTerminal) return res.status(409).json({ message: 'Completed or cancelled requests cannot be changed' });
+    const isOwnerCancellation = String(request.userId) === req.user!.id
       && parsed.status === RequestStatus.CANCELLED
       && request.status !== RequestStatus.FULFILLED
       && request.status !== RequestStatus.CANCELLED;
     let isAssignedDonorFulfilment = false;
     if (req.user!.role === 'DONOR' && parsed.status === RequestStatus.FULFILLED) {
-      const donor = await prisma.donorProfile.findUnique({ where: { userId: req.user!.id } });
-      isAssignedDonorFulfilment = donor?.id === request.donorId && request.status === RequestStatus.CONTACTING;
+      const donor = await DonorProfile.findOne({ userId: req.user!.id });
+      isAssignedDonorFulfilment = String(donor?._id) === String(request.donorId) && request.status === RequestStatus.CONTACTING;
     }
     if (req.user!.role !== 'ADMIN' && !isOwnerCancellation && !isAssignedDonorFulfilment) {
       return res.status(403).json({ message: 'You may only cancel your own request or complete a request assigned to you' });
     }
-    const update = await prisma.bloodRequest.update({
-      where: { id },
-      data: { status: parsed.status },
-    });
+    if (req.user!.role === 'ADMIN' && parsed.status !== RequestStatus.CANCELLED && parsed.status !== RequestStatus.FULFILLED) {
+      return res.status(400).json({ message: 'Admins may cancel or fulfill an active request' });
+    }
+    request.status = parsed.status;
+    const update = await request.save();
     res.json({ message: 'Request status updated', request: update });
   } catch (error) {
     if (error instanceof z.ZodError) {

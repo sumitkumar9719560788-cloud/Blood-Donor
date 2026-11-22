@@ -54,6 +54,7 @@ describe('donation request validation', () => {
     expect(requestSchema.safeParse({ ...validRequest, unitsNeeded: 0 }).success).toBe(false);
     expect(requestSchema.safeParse({ ...validRequest, bloodGroup: 'C+' }).success).toBe(false);
     expect(requestSchema.safeParse({ ...validRequest, consentToShare: false }).success).toBe(false);
+    expect(requestSchema.safeParse({ ...validRequest, contactMethod: 'call me' }).success).toBe(false);
   });
 });
 

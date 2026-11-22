@@ -36,6 +36,9 @@ export const login = async (credentials) => {
 	return result;
 };
 
+export const requestPasswordReset = (email) => request('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) });
+export const resetPassword = (token, password) => request('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, password }) });
+
 export const logout = () => {
 	localStorage.removeItem('lifelink-token');
 	localStorage.removeItem('lifelink-user');
@@ -78,6 +81,18 @@ export const saveDonor = (profile) => request('/donors', {
 	method: 'POST',
 	body: JSON.stringify(profile),
 });
+export const getMyDonor = async () => {
+	const donor = (await request('/donors/me')).donor;
+	if (!donor) return null;
+	const groups = { A_POSITIVE: 'A+', A_NEGATIVE: 'A-', B_POSITIVE: 'B+', B_NEGATIVE: 'B-', AB_POSITIVE: 'AB+', AB_NEGATIVE: 'AB-', O_POSITIVE: 'O+', O_NEGATIVE: 'O-' };
+	return { ...donor, bloodGroup: groups[donor.bloodGroup] || donor.bloodGroup };
+};
+export const getAdminUsers = async () => (await request('/admin/users')).users;
+export const updateUserRole = (id, role) => request(`/admin/users/${id}/role`, { method: 'PATCH', body: JSON.stringify({ role }) });
+export const setUserActive = (id, active) => request(`/admin/users/${id}/active`, { method: 'PATCH', body: JSON.stringify({ active }) });
+export const getAdminRequests = async () => (await request('/admin/requests')).requests;
+export const getAdminPendingDonors = async () => (await request('/admin/donors/pending')).donors;
+export const verifyDonor = (id, verificationStatus) => request(`/admin/donors/${id}/verification`, { method: 'PATCH', body: JSON.stringify({ verificationStatus }) });
 
 export const getBloodBanks = async (filters = {}) => {
 	const query = new URLSearchParams();
